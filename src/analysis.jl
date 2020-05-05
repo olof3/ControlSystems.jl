@@ -465,11 +465,11 @@ Given a transfer function describing the Plant `P` and a transferfunction descri
 `T = PC/(1+PC)` Complementary sensitivity function
 
 Only supports SISO systems"""
-function gangoffour(P::TransferFunction,C::TransferFunction)
-    if P.nu + P.ny + C.nu + C.ny > 4
+function gangoffour(P::LTISystem, C::LTISystem)
+    if !isiso(P) || !issiso(C)
         error("gangoffour only supports SISO systems")
     end
-    S = minreal(1/(1+P*C))
+    S = minreal(1/(1+P*C)) # Should be preferable to use `feedback`
     D = minreal(P*S)
     N = minreal(C*S)
     T = minreal(P*N)
