@@ -41,10 +41,10 @@ Laub, "A Schur Method for Solving Algebraic Riccati Equations."
 http://dspace.mit.edu/bitstream/handle/1721.1/1301/R-0859-05666488.pdf
 """
 function dare(A, B, Q, R)
-    if (!ishermitian(Q) || minimum(eigvals(real(Q))) < 0)
+    if !ishermitian(Q) || minimum(eigvals(real(Q))) < -eps(float(eltype(A)))
         error("Q must be positive-semidefinite.");
     end
-    if (!isposdef(R))
+    if !isposdef(R)
         error("R must be positive definite.");
     end
 
@@ -369,6 +369,7 @@ function _infnorm_two_steps_ct(sys::AbstractStateSpace, normtype::Symbol, tol=1e
     error("In _infnorm_two_steps_dt: The computation of the H∞/L∞ norm did not converge in $maxIters iterations")
 end
 
+
 function _infnorm_two_steps_dt(sys::AbstractStateSpace, normtype::Symbol, tol=1e-6, maxIters=250, approxcirc=1e-8)
     # Discrete-time version of linfnorm_two_steps_ct above
     # Compuations are done in normalized frequency θ
@@ -501,37 +502,29 @@ See also `gram`, `baltrunc`
 
 Glad, Ljung, Reglerteori: Flervariabla och Olinjära metoder
 """
-function balreal(sys::ST) where ST <: AbstractStateSpace
+function balreal(sys::ST; atol=0, rtol=1e-8) where ST <: AbstractStateSpace
     P = gram(sys, :c)
     Q = gram(sys, :o)
 
-    Q1 = try
-        cholesky(Hermitian(Q)).U
-    catch
-        throw(ArgumentError("Balanced realization failed: Observability grammian not positive definite, system needs to be observable"))
-    end
-    U,Σ,V = svd(Q1*P*Q1')
-    Σ .= sqrt.(Σ)
-    Σ1 = diagm(0 => sqrt.(Σ))
-    T = Σ1\(U'Q1)
+    Pchol = cholesky(Hermitian(P), Val(true), check=false)
+    Qchol = cholesky(Hermitian(Q), Val(true), check=false)
 
-    Pz = T*P*T'
-    Qz = inv(T')*Q*inv(T)
-    if norm(Pz-Qz) > sqrt(eps())
-        @warn("balreal: Result may be inaccurate")
-        println("Controllability gramian before transform")
-        display(P)
-        println("Controllability gramian after transform")
-        display(Pz)
-        println("Observability gramian before transform")
-        display(Q)
-        println("Observability gramian after transform")
-        display(Qz)
-        println("Singular values of PQ")
-        display(Σ)
-    end
+    S = Pchol.U[Pchol.p, Pchol.p]
+    R = Qchol.U[Qchol.p, Qchol.p]
+    U,Σ,V = svd( (S*R')[:,end:-1:1] ) # Σ are the Hankel singular values
+    V = V[end:-1:1,:]
 
-    sysr = ST(T*sys.A/T, T*sys.B, sys.C/T, sys.D, sys.Ts), diagm(0 => Σ)
+
+    k = findlast(>(max(atol, Σ[1]*rtol)), Σ) # Correct use of atol and rtol?
+
+    Σ1 = sqrt.(Σ[1:k])
+
+    T = diagm(Σ1) \ (V[:, 1:k]' * R)
+    Tp = (S'*U[:, 1:k]) / diagm(Σ1)
+
+    sysb = ss(T*sys.A*Tp, T*sys.B, sys.C*Tp, sys.D, sys.Ts)
+
+    return sysb, Σ1
 end
 
 
@@ -544,21 +537,8 @@ See also `gram`, `balreal`
 
 Glad, Ljung, Reglerteori: Flervariabla och Olinjära metoder
 """
-function baltrunc(sys::ST; atol = sqrt(eps()), rtol = 1e-3, unitgain = true) where ST <: AbstractStateSpace
-    sysbal, S = balreal(sys)
-    S = diag(S)
-    S = S[S .>= atol]
-    S = S[S .>= S[1]*rtol]
-    n = length(S)
-    A = sysbal.A[1:n,1:n]
-    B = sysbal.B[1:n,:]
-    C = sysbal.C[:,1:n]
-    D = sysbal.D
-    if unitgain
-        D = D/(C*inv(-A)*B)
-    end
-
-    return ST(A,B,C,D,sys.Ts), diagm(0 => S)
+function baltrunc(sys::ST; atol=sqrt(eps()), rtol=1e-3) where ST <: AbstractStateSpace
+    balreal(sys, atol, rtol)
 end
 
 """

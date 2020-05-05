@@ -350,13 +350,8 @@ end
 """
 `minsys = minreal(s::StateSpace, tol=sqrt(eps()))` is implemented via `baltrunc` and returns a system on diagonal form.
 """
-function minreal(s::AbstractStateSpace, tol=sqrt(eps()))
-    s = baltrunc(s, atol=tol, rtol = 0)[1]
-    try
-        return diagonalize(s)
-    catch
-        error("Minreal only implemented for diagonalizable systems.")
-    end
+function minreal(sys::AbstractStateSpace, tol=sqrt(eps()))
+    sys = balreal(sys, atol=tol, rtol=0)[1]
 end
 
 

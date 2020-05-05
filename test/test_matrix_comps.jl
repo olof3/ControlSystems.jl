@@ -4,7 +4,7 @@ B = 0.01*[1 0; 0 1]
 C = [1 0; 0 1]
 D = 0
 sys = ss(A,B,C,D)
-sysr, G = balreal(sys)
+sysr = balreal(sys)
 
 @test gram(sysr, :c) ≈ G
 @test gram(sysr, :o) ≈ G
